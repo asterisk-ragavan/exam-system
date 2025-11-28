@@ -353,7 +353,7 @@
                 if (auto) alert("Time is up! Your exam has been auto-submitted.");
                 else alert("Exam submitted successfully!");
                 
-                window.location.href = "{% url 'student-dashboard' %}";
+                window.location.href = "{% url 'student_dashboard' %}";
             } catch (e) {
                 alert("Submission failed. Please check your connection.");
             }

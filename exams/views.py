@@ -1,10 +1,15 @@
 from rest_framework import viewsets, permissions, status, views
 from rest_framework.response import Response
 from django.utils import timezone
-from django.shortcuts import get_object_or_404, render
+from django.shortcuts import get_object_or_404, render, redirect
 from django.contrib.auth.decorators import login_required, user_passes_test
-from .models import Exam, ExamStudent, Question, StudentAnswer
+from django.contrib import messages
+from django.db import transaction
+import csv
+import io
+from .models import Exam, ExamStudent, Question, QuestionOption, StudentAnswer
 from .serializers import ExamSerializer, QuestionSerializer, StudentAnswerSerializer
+from .forms import QuestionImportForm
 
 # --- Template Views (Teacher Dashboard) ---
 
@@ -33,6 +38,86 @@ def exam_live_status(request, exam_id):
         'not_started_count': attempts.filter(status=ExamStudent.Status.NOT_STARTED).count(),
     }
     return render(request, 'exams/exam_live_status.html', context)
+
+@login_required
+@user_passes_test(is_teacher_or_admin)
+def import_questions(request):
+    if request.method == 'POST':
+        form = QuestionImportForm(request.POST, request.FILES)
+        if form.is_valid():
+            course = form.cleaned_data['course']
+            csv_file = request.FILES['csv_file']
+            
+            if not csv_file.name.endswith('.csv'):
+                messages.error(request, 'Please upload a CSV file.')
+                return render(request, 'exams/import_questions.html', {'form': form})
+
+            try:
+                decoded_file = csv_file.read().decode('utf-8-sig') # utf-8-sig handles BOM from Excel
+                io_string = io.StringIO(decoded_file)
+                reader = csv.reader(io_string)
+                
+                # Skip header
+                next(reader, None)
+                
+                questions_created = 0
+                
+                with transaction.atomic():
+                    for row in reader:
+                        if len(row) < 3:
+                            continue
+                            
+                        text = row[0].strip()
+                        if not text:
+                            continue
+
+                        difficulty_raw = row[1].strip().upper()
+                        difficulty_map = {'E': 'E', 'M': 'M', 'H': 'H', 'EASY': 'E', 'MEDIUM': 'M', 'HARD': 'H'}
+                        difficulty = difficulty_map.get(difficulty_raw, 'M')
+                        
+                        try:
+                            marks = int(row[2].strip())
+                        except ValueError:
+                            marks = 1
+                            
+                        question = Question.objects.create(
+                            course=course,
+                            text=text,
+                            difficulty=difficulty,
+                            marks=marks,
+                            question_type=Question.Type.MCQ,
+                            created_by=request.user
+                        )
+                        
+                        # Options start from index 3
+                        # Format: Option1, IsCorrect1, Option2, IsCorrect2...
+                        for i in range(3, len(row), 2):
+                            if i + 1 < len(row):
+                                opt_text = row[i].strip()
+                                if not opt_text:
+                                    continue
+                                    
+                                is_correct_raw = row[i+1].strip().lower()
+                                is_correct = is_correct_raw in ['true', '1', 'yes', 't', 'correct']
+                                
+                                QuestionOption.objects.create(
+                                    question=question,
+                                    text=opt_text,
+                                    is_correct=is_correct
+                                )
+                        
+                        questions_created += 1
+                        
+                messages.success(request, f'Successfully imported {questions_created} questions.')
+                return redirect('teacher_dashboard')
+                
+            except Exception as e:
+                messages.error(request, f'Error processing file: {str(e)}')
+                
+    else:
+        form = QuestionImportForm()
+        
+    return render(request, 'exams/import_questions.html', {'form': form})
 
 # --- Student Template Views ---
 
