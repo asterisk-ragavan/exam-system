@@ -338,9 +338,15 @@ def grade_attempt(request, attempt_id):
     if request.method == 'POST':
         attempt = get_object_or_404(ExamStudent, id=attempt_id)
         question_id = request.POST.get('question_id')
-        marks = float(request.POST.get('marks', 0))
+        try:
+            marks = float(request.POST.get('marks', 0))
+        except (ValueError, TypeError):
+            return JsonResponse({'status': 'error', 'message': 'Invalid marks value'}, status=400)
         
         question = get_object_or_404(Question, id=question_id)
+        
+        if marks < 0 or marks > question.marks:
+            return JsonResponse({'status': 'error', 'message': f'Marks must be between 0 and {question.marks}'}, status=400)
         
         # Update or create answer record (if teacher grades a question student didn't answer)
         answer, created = StudentAnswer.objects.get_or_create(
