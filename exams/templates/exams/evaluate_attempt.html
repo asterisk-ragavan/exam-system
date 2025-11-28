@@ -11,7 +11,7 @@
             <p class="mb-0">Exam: <strong>{{ attempt.exam.name }}</strong> | Status: <span class="badge {% if attempt.status == 'SUBMITTED' or attempt.status == 'AUTO_SUBMITTED' %}bg-success{% else %}bg-warning{% endif %}">{{ attempt.get_status_display }}</span></p>
         </div>
         <div class="text-end">
-            <h4>Total Score: <span id="total-score">{{ attempt.total_score }}</span> / {{ attempt.exam.questions.count }}</h4> <!-- Rough total, fix later -->
+            <h4>Total Score: <span id="total-score">{{ attempt.total_score }}</span> / {{ total_marks }}</h4>
             <a href="{% url 'exam_live_status' attempt.exam.id %}" class="btn btn-secondary">Back to List</a>
         </div>
     </div>
