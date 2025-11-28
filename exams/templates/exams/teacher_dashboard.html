@@ -1,0 +1,69 @@
+{% extends 'base.html' %}
+
+{% block title %}Teacher Dashboard{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-md-8">
+        <h2>Teacher Dashboard</h2>
+        <p class="text-muted">Manage your exams and view live status.</p>
+    </div>
+    <div class="col-md-4 text-end">
+        <a href="/admin/exams/exam/add/" class="btn btn-success">+ Create New Exam</a>
+        <a href="/admin/exams/question/add/" class="btn btn-outline-primary">+ Add Question</a>
+    </div>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-header bg-light">
+        <h5 class="mb-0">Your Exams</h5>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-hover mb-0">
+            <thead>
+                <tr>
+                    <th>Exam Name</th>
+                    <th>Course</th>
+                    <th>Date</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for exam in exams %}
+                <tr>
+                    <td>{{ exam.name }}</td>
+                    <td><span class="badge bg-info text-dark">{{ exam.course.code }}</span></td>
+                    <td>{{ exam.start_datetime|date:"M d, Y H:i" }}</td>
+                    <td>
+                        {% if exam.status == 'DRAFT' %}
+                            <span class="badge bg-secondary">Draft</span>
+                        {% elif exam.status == 'SCHEDULED' %}
+                            <span class="badge bg-warning text-dark">Scheduled</span>
+                        {% elif exam.status == 'RUNNING' %}
+                            <span class="badge bg-success">Running</span>
+                        {% else %}
+                            <span class="badge bg-dark">Completed</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <a href="{% url 'exam-live-status' exam.id %}" class="btn btn-sm btn-primary">
+                            Live Monitor
+                        </a>
+                        <a href="/admin/exams/exam/{{ exam.id }}/change/" class="btn btn-sm btn-outline-secondary">
+                            Edit
+                        </a>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="5" class="text-center py-4">
+                        <p class="text-muted">No exams found. Create one to get started!</p>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

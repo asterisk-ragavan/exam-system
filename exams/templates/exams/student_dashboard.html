@@ -1,0 +1,69 @@
+{% extends 'base.html' %}
+
+{% block title %}Student Dashboard{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-md-12">
+        <h2>My Exams</h2>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-6">
+        <div class="card shadow-sm mb-4">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0">Active & Upcoming Exams</h5>
+            </div>
+            <div class="list-group list-group-flush">
+                {% for exam in active_exams %}
+                <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="mb-1">{{ exam.name }}</h6>
+                        <small class="text-muted">
+                            {{ exam.course.code }} | {{ exam.duration_minutes }} mins<br>
+                            Starts: {{ exam.start_datetime|date:"M d, H:i" }}
+                        </small>
+                    </div>
+                    <div>
+                        {% if exam.status == 'RUNNING' %}
+                            <a href="{% url 'take-exam' exam.id %}" class="btn btn-success btn-sm">Start Exam</a>
+                        {% else %}
+                            <button class="btn btn-secondary btn-sm" disabled>Not Started</button>
+                        {% endif %}
+                    </div>
+                </div>
+                {% empty %}
+                <div class="list-group-item text-center text-muted py-4">
+                    No active exams at the moment.
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-6">
+        <div class="card shadow-sm">
+            <div class="card-header bg-secondary text-white">
+                <h5 class="mb-0">Past Attempts</h5>
+            </div>
+            <div class="list-group list-group-flush">
+                {% for attempt in past_attempts %}
+                <div class="list-group-item">
+                    <div class="d-flex w-100 justify-content-between">
+                        <h6 class="mb-1">{{ attempt.exam.name }}</h6>
+                        <small>{{ attempt.submitted_at|date:"M d, H:i" }}</small>
+                    </div>
+                    <p class="mb-1">Score: <strong>{{ attempt.score_objective }}</strong> / {{ attempt.exam.total_marks|default:"-" }}</p>
+                    <small class="text-muted">{{ attempt.status }}</small>
+                </div>
+                {% empty %}
+                <div class="list-group-item text-center text-muted py-4">
+                    No past exams found.
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
