@@ -48,7 +48,7 @@
                             </ul>
                         {% else %}
                             <div class="p-3 bg-light border rounded mt-2">
-                                {% if item.answer.answer_text %}
+                                {% if item.answer and item.answer.answer_text %}
                                     {{ item.answer.answer_text|linebreaks }}
                                 {% else %}
                                     <em class="text-muted">No answer provided.</em>
