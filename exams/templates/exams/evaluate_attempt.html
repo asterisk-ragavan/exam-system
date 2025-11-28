@@ -8,7 +8,7 @@
         <div>
             <h2>Evaluate Attempt</h2>
             <h5 class="text-muted">{{ attempt.student.first_name }} {{ attempt.student.last_name }} ({{ attempt.student.username }})</h5>
-            <p class="mb-0">Exam: <strong>{{ attempt.exam.name }}</strong> | Status: <span class="badge bg-{{ attempt.status|yesno:'success,warning' }}">{{ attempt.get_status_display }}</span></p>
+            <p class="mb-0">Exam: <strong>{{ attempt.exam.name }}</strong> | Status: <span class="badge {% if attempt.status == 'SUBMITTED' or attempt.status == 'AUTO_SUBMITTED' %}bg-success{% else %}bg-warning{% endif %}">{{ attempt.get_status_display }}</span></p>
         </div>
         <div class="text-end">
             <h4>Total Score: <span id="total-score">{{ attempt.total_score }}</span> / {{ attempt.exam.questions.count }}</h4> <!-- Rough total, fix later -->
