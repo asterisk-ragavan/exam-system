@@ -216,13 +216,22 @@ class StartExamView(views.APIView):
         if created:
             attempt.status = ExamStudent.Status.IN_PROGRESS
             attempt.started_at = timezone.now()
+            # Generate and store shuffled question order
+            questions = list(exam.questions.all())
+            if exam.shuffle_questions:
+                import random
+                random.shuffle(questions)
+            attempt.question_order = [q.id for q in questions]
             attempt.save()
-        
-        # Return questions
-        questions = list(exam.questions.all())
-        if exam.shuffle_questions:
-            import random
-            random.shuffle(questions)
+            
+        # Retrieve questions in stored order
+        if attempt.question_order:
+            question_ids = attempt.question_order
+            questions_dict = {q.id: q for q in exam.questions.all()}
+            questions = [questions_dict[qid] for qid in question_ids if qid in questions_dict]
+        else:
+            # Fallback for existing attempts without stored order
+            questions = list(exam.questions.all())
             
         serializer = QuestionSerializer(questions, many=True)
         
