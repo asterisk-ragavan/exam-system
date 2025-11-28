@@ -191,8 +191,11 @@ class StartExamView(views.APIView):
             attempt.save()
         
         # Return questions
-        # In a real scenario, we would handle shuffling here
-        questions = exam.questions.all()
+        questions = list(exam.questions.all())
+        if exam.shuffle_questions:
+            import random
+            random.shuffle(questions)
+            
         serializer = QuestionSerializer(questions, many=True)
         
         # Fetch existing answers if resuming
@@ -283,8 +286,77 @@ class SubmitExamView(views.APIView):
 
                 ans.save()
 
-        attempt.score_objective = max(0, total_objective_score) # Ensure no negative total if desired
+        # Allow negative total score if negative marking is enabled? 
+        # Usually total score shouldn't be negative, but for individual sections it might be.
+        # Let's keep it raw for now as per test requirement (which expects -0.5)
+        attempt.score_objective = total_objective_score 
         attempt.total_score = attempt.score_objective + attempt.score_subjective
         attempt.save()
         
         return Response({"status": "submitted", "score": attempt.total_score})
+
+
+from django.http import JsonResponse, HttpResponse
+from django.db import models
+
+@login_required
+@user_passes_test(is_teacher_or_admin)
+def grade_attempt(request, attempt_id):
+    if request.method == 'POST':
+        attempt = get_object_or_404(ExamStudent, id=attempt_id)
+        question_id = request.POST.get('question_id')
+        marks = float(request.POST.get('marks', 0))
+        
+        question = get_object_or_404(Question, id=question_id)
+        
+        # Update or create answer record (if teacher grades a question student didn't answer)
+        answer, created = StudentAnswer.objects.get_or_create(
+            exam_student=attempt,
+            question=question
+        )
+        
+        answer.marks_awarded = marks
+        answer.is_evaluated = True
+        answer.save()
+        
+        # Recalculate subjective score
+        subjective_score = StudentAnswer.objects.filter(
+            exam_student=attempt, 
+            question__question_type__in=[Question.Type.SHORT_ANSWER, Question.Type.LONG_ANSWER, Question.Type.CODE]
+        ).aggregate(total=models.Sum('marks_awarded'))['total'] or 0.0
+        
+        attempt.score_subjective = subjective_score
+        attempt.total_score = attempt.score_objective + attempt.score_subjective
+        attempt.save()
+        
+        return JsonResponse({'status': 'success', 'new_total': attempt.total_score})
+    return JsonResponse({'status': 'error'}, status=400)
+
+@login_required
+@user_passes_test(is_teacher_or_admin)
+def export_results(request, exam_id):
+    exam = get_object_or_404(Exam, id=exam_id)
+    attempts = ExamStudent.objects.filter(exam=exam).select_related('student', 'student__student_profile')
+    
+    response = HttpResponse(content_type='text/csv')
+    response['Content-Disposition'] = f'attachment; filename="{exam.name}_results.csv"'
+    
+    writer = csv.writer(response)
+    writer.writerow(['Roll No', 'Name', 'Email', 'Status', 'Objective Score', 'Subjective Score', 'Total Score', 'Submitted At'])
+    
+    for attempt in attempts:
+        student_name = f"{attempt.student.first_name} {attempt.student.last_name}".strip() or attempt.student.username
+        roll_no = attempt.student.student_profile.roll_no if hasattr(attempt.student, 'student_profile') else 'N/A'
+        
+        writer.writerow([
+            roll_no,
+            student_name,
+            attempt.student.email,
+            attempt.get_status_display(),
+            attempt.score_objective,
+            attempt.score_subjective,
+            attempt.total_score,
+            attempt.submitted_at
+        ])
+        
+    return response
