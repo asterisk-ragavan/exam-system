@@ -1,10 +1,22 @@
 from rest_framework import viewsets, permissions, status, views
 from rest_framework.response import Response
 from django.utils import timezone
-from django.shortcuts import get_object_or_404, render
+from django.shortcuts import get_object_or_404, render, redirect
 from django.contrib.auth.decorators import login_required, user_passes_test
-from .models import Exam, ExamStudent, Question, StudentAnswer
+from django.contrib import messages
+from django.db import transaction, models
+from django.http import JsonResponse, HttpResponse
+from django.db import transaction
+from django.db.models import Sum
+import csv
+import io
+import logging
+import random
+from .models import Exam, ExamStudent, Question, QuestionOption, StudentAnswer
 from .serializers import ExamSerializer, QuestionSerializer, StudentAnswerSerializer
+from .forms import QuestionImportForm
+
+logger = logging.getLogger(__name__)
 
 # --- Template Views (Teacher Dashboard) ---
 
@@ -33,6 +45,118 @@ def exam_live_status(request, exam_id):
         'not_started_count': attempts.filter(status=ExamStudent.Status.NOT_STARTED).count(),
     }
     return render(request, 'exams/exam_live_status.html', context)
+
+@login_required
+@user_passes_test(is_teacher_or_admin)
+def evaluate_attempt(request, attempt_id):
+    attempt = get_object_or_404(ExamStudent, id=attempt_id)
+    
+    # Get all questions for this exam
+    # We need to join with StudentAnswer to get the answer if it exists
+    questions = attempt.exam.questions.all()
+    
+    # Calculate total possible marks (sum of all question marks)
+    total_marks = questions.aggregate(total=Sum('marks'))['total'] or 0
+    
+    # Fetch answers
+    answers = StudentAnswer.objects.filter(exam_student=attempt).select_related('question')
+    answers_map = {ans.question_id: ans for ans in answers}
+    
+    evaluation_data = []
+    for q in questions:
+        ans = answers_map.get(q.id)
+        evaluation_data.append({
+            'question': q,
+            'answer': ans,
+            'options': q.options.all() if q.question_type in [Question.Type.MCQ, Question.Type.MSQ] else None
+        })
+        
+    context = {
+        'attempt': attempt,
+        'evaluation_data': evaluation_data,
+        'total_marks': total_marks
+    }
+    return render(request, 'exams/evaluate_attempt.html', context)
+
+@login_required
+@user_passes_test(is_teacher_or_admin)
+def import_questions(request):
+    if request.method == 'POST':
+        form = QuestionImportForm(request.POST, request.FILES)
+        if form.is_valid():
+            course = form.cleaned_data['course']
+            csv_file = request.FILES['csv_file']
+            
+            if not csv_file.name.endswith('.csv'):
+                messages.error(request, 'Please upload a CSV file.')
+                return render(request, 'exams/import_questions.html', {'form': form})
+
+            try:
+                decoded_file = csv_file.read().decode('utf-8-sig') # utf-8-sig handles BOM from Excel
+                io_string = io.StringIO(decoded_file)
+                reader = csv.reader(io_string)
+                
+                # Skip header
+                next(reader, None)
+                
+                questions_created = 0
+                
+                with transaction.atomic():
+                    for row in reader:
+                        if len(row) < 3:
+                            continue
+                            
+                        text = row[0].strip()
+                        if not text:
+                            continue
+
+                        difficulty_raw = row[1].strip().upper()
+                        difficulty_map = {'E': 'E', 'M': 'M', 'H': 'H', 'EASY': 'E', 'MEDIUM': 'M', 'HARD': 'H'}
+                        difficulty = difficulty_map.get(difficulty_raw, 'M')
+                        
+                        try:
+                            marks = int(row[2].strip())
+                        except ValueError:
+                            marks = 1
+                            
+                        question = Question.objects.create(
+                            course=course,
+                            text=text,
+                            difficulty=difficulty,
+                            marks=marks,
+                            question_type=Question.Type.MCQ,
+                            created_by=request.user
+                        )
+                        
+                        # Options start from index 3
+                        # Format: Option1, IsCorrect1, Option2, IsCorrect2...
+                        for i in range(3, len(row), 2):
+                            if i + 1 < len(row):
+                                opt_text = row[i].strip()
+                                if not opt_text:
+                                    continue
+                                    
+                                is_correct_raw = row[i+1].strip().lower()
+                                is_correct = is_correct_raw in ['true', '1', 'yes', 't', 'correct']
+                                
+                                QuestionOption.objects.create(
+                                    question=question,
+                                    text=opt_text,
+                                    is_correct=is_correct
+                                )
+                        
+                        questions_created += 1
+                        
+                messages.success(request, f'Successfully imported {questions_created} questions.')
+                return redirect('teacher_dashboard')
+                
+            except Exception as e:
+                messages.error(request, f'Error processing file: {str(e)}')
+                
+    else:
+        form = QuestionImportForm()
+        
+    return render(request, 'exams/import_questions.html', {'form': form})
 
 # --- Student Template Views ---
 
@@ -100,14 +224,34 @@ class StartExamView(views.APIView):
             student=student
         )
         
+        # Fetch all questions once for reuse
+        all_questions = {q.id: q for q in exam.questions.all()}
+        
         if created:
             attempt.status = ExamStudent.Status.IN_PROGRESS
             attempt.started_at = timezone.now()
+            # Generate and store shuffled question order
+            question_ids = list(all_questions.keys())
+            if exam.shuffle_questions:
+                random.shuffle(question_ids)
+            attempt.question_order = question_ids
             attempt.save()
-        
-        # Return questions
-        # In a real scenario, we would handle shuffling here
-        questions = exam.questions.all()
+            
+        # Retrieve questions in stored order
+        if attempt.question_order:
+            questions = []
+            for qid in attempt.question_order:
+                if qid in all_questions:
+                    questions.append(all_questions[qid])
+                else:
+                    logger.warning(
+                        f"Question {qid} not found for exam {exam.id}, attempt {attempt.id}. "
+                        "Question may have been deleted after exam started."
+                    )
+        else:
+            # Fallback for existing attempts without stored order
+            questions = list(all_questions.values())
+            
         serializer = QuestionSerializer(questions, many=True)
         
         # Fetch existing answers if resuming
@@ -198,8 +342,80 @@ class SubmitExamView(views.APIView):
 
                 ans.save()
 
-        attempt.score_objective = max(0, total_objective_score) # Ensure no negative total if desired
+        # Allow negative total score if negative marking is enabled? 
+        # Usually total score shouldn't be negative, but for individual sections it might be.
+        # Let's keep it raw for now as per test requirement (which expects -0.5)
+        attempt.score_objective = total_objective_score 
         attempt.total_score = attempt.score_objective + attempt.score_subjective
         attempt.save()
         
         return Response({"status": "submitted", "score": attempt.total_score})
+
+
+@login_required
+@user_passes_test(is_teacher_or_admin)
+def grade_attempt(request, attempt_id):
+    if request.method == 'POST':
+        attempt = get_object_or_404(ExamStudent, id=attempt_id)
+        question_id = request.POST.get('question_id')
+        try:
+            marks = float(request.POST.get('marks', 0))
+        except (ValueError, TypeError):
+            return JsonResponse({'status': 'error', 'message': 'Invalid marks value'}, status=400)
+        
+        question = get_object_or_404(Question, id=question_id)
+        
+        if marks < 0 or marks > question.marks:
+            return JsonResponse({'status': 'error', 'message': f'Marks must be between 0 and {question.marks}'}, status=400)
+        
+        # Update or create answer record (if teacher grades a question student didn't answer)
+        answer, created = StudentAnswer.objects.get_or_create(
+            exam_student=attempt,
+            question=question
+        )
+        
+        answer.marks_awarded = marks
+        answer.is_evaluated = True
+        answer.save()
+        
+        # Recalculate subjective score
+        subjective_score = StudentAnswer.objects.filter(
+            exam_student=attempt, 
+            question__question_type__in=[Question.Type.SHORT_ANSWER, Question.Type.LONG_ANSWER, Question.Type.CODE]
+        ).aggregate(total=models.Sum('marks_awarded'))['total'] or 0.0
+        
+        attempt.score_subjective = subjective_score
+        attempt.total_score = attempt.score_objective + attempt.score_subjective
+        attempt.save()
+        
+        return JsonResponse({'status': 'success', 'new_total': attempt.total_score})
+    return JsonResponse({'status': 'error'}, status=400)
+
+@login_required
+@user_passes_test(is_teacher_or_admin)
+def export_results(request, exam_id):
+    exam = get_object_or_404(Exam, id=exam_id)
+    attempts = ExamStudent.objects.filter(exam=exam).select_related('student', 'student__student_profile')
+    
+    response = HttpResponse(content_type='text/csv')
+    response['Content-Disposition'] = f'attachment; filename="{exam.name}_results.csv"'
+    
+    writer = csv.writer(response)
+    writer.writerow(['Roll No', 'Name', 'Email', 'Status', 'Objective Score', 'Subjective Score', 'Total Score', 'Submitted At'])
+    
+    for attempt in attempts:
+        student_name = f"{attempt.student.first_name} {attempt.student.last_name}".strip() or attempt.student.username
+        roll_no = attempt.student.student_profile.roll_no if hasattr(attempt.student, 'student_profile') else 'N/A'
+        
+        writer.writerow([
+            roll_no,
+            student_name,
+            attempt.student.email,
+            attempt.get_status_display(),
+            attempt.score_objective,
+            attempt.score_subjective,
+            attempt.total_score,
+            attempt.submitted_at
+        ])
+        
+    return response

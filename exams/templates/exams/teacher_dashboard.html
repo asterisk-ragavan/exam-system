@@ -11,6 +11,7 @@
     <div class="col-md-4 text-end">
         <a href="/admin/exams/exam/add/" class="btn btn-success">+ Create New Exam</a>
         <a href="/admin/exams/question/add/" class="btn btn-outline-primary">+ Add Question</a>
+        <a href="{% url 'import_questions' %}" class="btn btn-outline-info" title="Import Questions from CSV"><i class="bi bi-upload"></i> Import CSV</a>
     </div>
 </div>
 
@@ -47,8 +48,11 @@
                         {% endif %}
                     </td>
                     <td>
-                        <a href="{% url 'exam-live-status' exam.id %}" class="btn btn-sm btn-primary">
+                        <a href="{% url 'exam_live_status' exam.id %}" class="btn btn-sm btn-primary">
                             Live Monitor
+                        </a>
+                        <a href="{% url 'export_results' exam.id %}" class="btn btn-sm btn-outline-success">
+                            <i class="bi bi-download"></i> Results
                         </a>
                         <a href="/admin/exams/exam/{{ exam.id }}/change/" class="btn btn-sm btn-outline-secondary">
                             Edit

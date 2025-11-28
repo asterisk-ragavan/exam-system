@@ -90,6 +90,9 @@ class ExamStudent(models.Model):
     started_at = models.DateTimeField(null=True, blank=True)
     submitted_at = models.DateTimeField(null=True, blank=True)
     
+    # Store shuffled question order (list of question IDs)
+    question_order = models.JSONField(default=list, blank=True)
+    
     # Security logs
     ip_address = models.GenericIPAddressField(null=True, blank=True)
     user_agent = models.TextField(blank=True)

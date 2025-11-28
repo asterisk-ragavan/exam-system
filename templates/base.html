@@ -27,7 +27,7 @@
                         </li>
                         {% if user.role == 'TEACHER' or user.role == 'ADMIN' %}
                             <li class="nav-item">
-                                <a class="nav-link active" href="{% url 'teacher-dashboard' %}">Dashboard</a>
+                                <a class="nav-link active" href="{% url 'teacher_dashboard' %}">Dashboard</a>
                             </li>
                         {% endif %}
                         <li class="nav-item">
