@@ -5,6 +5,7 @@ from django.shortcuts import get_object_or_404, render, redirect
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.contrib import messages
 from django.db import transaction
+from django.db.models import Sum
 import csv
 import io
 from .models import Exam, ExamStudent, Question, QuestionOption, StudentAnswer
@@ -48,6 +49,9 @@ def evaluate_attempt(request, attempt_id):
     # We need to join with StudentAnswer to get the answer if it exists
     questions = attempt.exam.questions.all()
     
+    # Calculate total possible marks (sum of all question marks)
+    total_marks = questions.aggregate(total=Sum('marks'))['total'] or 0
+    
     # Fetch answers
     answers = StudentAnswer.objects.filter(exam_student=attempt).select_related('question')
     answers_map = {ans.question_id: ans for ans in answers}
@@ -63,7 +67,8 @@ def evaluate_attempt(request, attempt_id):
         
     context = {
         'attempt': attempt,
-        'evaluation_data': evaluation_data
+        'evaluation_data': evaluation_data,
+        'total_marks': total_marks
     }
     return render(request, 'exams/evaluate_attempt.html', context)
 
