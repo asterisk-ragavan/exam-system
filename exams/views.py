@@ -7,10 +7,13 @@ from django.contrib import messages
 from django.db import transaction
 import csv
 import io
+import logging
 import random
 from .models import Exam, ExamStudent, Question, QuestionOption, StudentAnswer
 from .serializers import ExamSerializer, QuestionSerializer, StudentAnswerSerializer
 from .forms import QuestionImportForm
+
+logger = logging.getLogger(__name__)
 
 # --- Template Views (Teacher Dashboard) ---
 
@@ -229,7 +232,15 @@ class StartExamView(views.APIView):
             
         # Retrieve questions in stored order
         if attempt.question_order:
-            questions = [all_questions[qid] for qid in attempt.question_order if qid in all_questions]
+            questions = []
+            for qid in attempt.question_order:
+                if qid in all_questions:
+                    questions.append(all_questions[qid])
+                else:
+                    logger.warning(
+                        f"Question {qid} not found for exam {exam.id}, attempt {attempt.id}. "
+                        "Question may have been deleted after exam started."
+                    )
         else:
             # Fallback for existing attempts without stored order
             questions = list(all_questions.values())
