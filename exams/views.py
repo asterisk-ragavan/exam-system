@@ -7,6 +7,7 @@ from django.contrib import messages
 from django.db import transaction
 import csv
 import io
+import random
 from .models import Exam, ExamStudent, Question, QuestionOption, StudentAnswer
 from .serializers import ExamSerializer, QuestionSerializer, StudentAnswerSerializer
 from .forms import QuestionImportForm
@@ -213,25 +214,25 @@ class StartExamView(views.APIView):
             student=student
         )
         
+        # Fetch all questions once for reuse
+        all_questions = {q.id: q for q in exam.questions.all()}
+        
         if created:
             attempt.status = ExamStudent.Status.IN_PROGRESS
             attempt.started_at = timezone.now()
             # Generate and store shuffled question order
-            questions = list(exam.questions.all())
+            question_ids = list(all_questions.keys())
             if exam.shuffle_questions:
-                import random
-                random.shuffle(questions)
-            attempt.question_order = [q.id for q in questions]
+                random.shuffle(question_ids)
+            attempt.question_order = question_ids
             attempt.save()
             
         # Retrieve questions in stored order
         if attempt.question_order:
-            question_ids = attempt.question_order
-            questions_dict = {q.id: q for q in exam.questions.all()}
-            questions = [questions_dict[qid] for qid in question_ids if qid in questions_dict]
+            questions = [all_questions[qid] for qid in attempt.question_order if qid in all_questions]
         else:
             # Fallback for existing attempts without stored order
-            questions = list(exam.questions.all())
+            questions = list(all_questions.values())
             
         serializer = QuestionSerializer(questions, many=True)
         
