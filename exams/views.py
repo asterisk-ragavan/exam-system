@@ -41,6 +41,34 @@ def exam_live_status(request, exam_id):
 
 @login_required
 @user_passes_test(is_teacher_or_admin)
+def evaluate_attempt(request, attempt_id):
+    attempt = get_object_or_404(ExamStudent, id=attempt_id)
+    
+    # Get all questions for this exam
+    # We need to join with StudentAnswer to get the answer if it exists
+    questions = attempt.exam.questions.all()
+    
+    # Fetch answers
+    answers = StudentAnswer.objects.filter(exam_student=attempt).select_related('question')
+    answers_map = {ans.question_id: ans for ans in answers}
+    
+    evaluation_data = []
+    for q in questions:
+        ans = answers_map.get(q.id)
+        evaluation_data.append({
+            'question': q,
+            'answer': ans,
+            'options': q.options.all() if q.question_type in [Question.Type.MCQ, Question.Type.MSQ] else None
+        })
+        
+    context = {
+        'attempt': attempt,
+        'evaluation_data': evaluation_data
+    }
+    return render(request, 'exams/evaluate_attempt.html', context)
+
+@login_required
+@user_passes_test(is_teacher_or_admin)
 def import_questions(request):
     if request.method == 'POST':
         form = QuestionImportForm(request.POST, request.FILES)

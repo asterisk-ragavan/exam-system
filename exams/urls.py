@@ -2,7 +2,7 @@ from django.urls import path
 from .views import (
     ActiveExamsView, StartExamView, SubmitAnswerView, SubmitExamView,
     teacher_dashboard, exam_live_status, student_dashboard, take_exam_view,
-    import_questions, grade_attempt, export_results
+    import_questions, grade_attempt, export_results, evaluate_attempt
 )
 
 urlpatterns = [
@@ -10,6 +10,7 @@ urlpatterns = [
     path('dashboard/', teacher_dashboard, name='teacher_dashboard'),
     path('import-questions/', import_questions, name='import_questions'),
     path('live/<int:exam_id>/', exam_live_status, name='exam_live_status'),
+    path('evaluate/<int:attempt_id>/', evaluate_attempt, name='evaluate_attempt'),
     path('student/dashboard/', student_dashboard, name='student_dashboard'),
     path('take/<int:exam_id>/', take_exam_view, name='take_exam'),
     path('export/<int:exam_id>/', export_results, name='export_results'),

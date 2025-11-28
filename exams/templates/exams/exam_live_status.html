@@ -64,6 +64,7 @@
                     <th>Started At</th>
                     <th>Submitted At</th>
                     <th>Score (Obj)</th>
+                    <th>Actions</th>
                 </tr>
             </thead>
             <tbody>
@@ -88,6 +89,14 @@
                         {% else %}
                             -
                         {% endif %}
+                    </td>
+                    <td>
+                        {% if attempt.status == 'SUBMITTED' or attempt.status == 'AUTO_SUBMITTED' %}
+                            <a href="{% url 'evaluate_attempt' attempt.id %}" class="btn btn-sm btn-outline-primary">
+                                Evaluate
+                            </a>
+                        {% endif %}
+                    </td>
                     </td>
                 </tr>
                 {% empty %}

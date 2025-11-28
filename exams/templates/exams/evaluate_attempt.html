@@ -1,0 +1,135 @@
+{% extends 'base.html' %}
+
+{% block title %}Evaluate Attempt{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2>Evaluate Attempt</h2>
+            <h5 class="text-muted">{{ attempt.student.first_name }} {{ attempt.student.last_name }} ({{ attempt.student.username }})</h5>
+            <p class="mb-0">Exam: <strong>{{ attempt.exam.name }}</strong> | Status: <span class="badge bg-{{ attempt.status|yesno:'success,warning' }}">{{ attempt.get_status_display }}</span></p>
+        </div>
+        <div class="text-end">
+            <h4>Total Score: <span id="total-score">{{ attempt.total_score }}</span> / {{ attempt.exam.questions.count }}</h4> <!-- Rough total, fix later -->
+            <a href="{% url 'exam_live_status' attempt.exam.id %}" class="btn btn-secondary">Back to List</a>
+        </div>
+    </div>
+
+    <div class="card shadow-sm">
+        <div class="card-body">
+            {% for item in evaluation_data %}
+                <div class="mb-4 border-bottom pb-4">
+                    <div class="d-flex justify-content-between">
+                        <h5 class="card-title">Q{{ forloop.counter }}: {{ item.question.text }}</h5>
+                        <span class="badge bg-info">{{ item.question.marks }} Marks</span>
+                    </div>
+
+                    <!-- Student Answer Display -->
+                    <div class="mt-2">
+                        <strong>Student Answer:</strong>
+                        {% if item.question.question_type == 'MCQ' or item.question.question_type == 'MSQ' %}
+                            <ul class="list-group mt-2">
+                                {% for opt in item.options %}
+                                    {% if item.answer and opt.id in item.answer.selected_options %}
+                                        <li class="list-group-item {% if opt.is_correct %}list-group-item-success{% else %}list-group-item-danger{% endif %}">
+                                            {{ opt.text }} 
+                                            {% if opt.is_correct %}<i class="bi bi-check-circle-fill"></i>{% else %}<i class="bi bi-x-circle-fill"></i>{% endif %}
+                                            (Selected)
+                                        </li>
+                                    {% elif opt.is_correct %}
+                                        <li class="list-group-item list-group-item-light text-success">
+                                            {{ opt.text }} (Correct Answer)
+                                        </li>
+                                    {% else %}
+                                        <li class="list-group-item">{{ opt.text }}</li>
+                                    {% endif %}
+                                {% endfor %}
+                            </ul>
+                        {% else %}
+                            <div class="p-3 bg-light border rounded mt-2">
+                                {% if item.answer.answer_text %}
+                                    {{ item.answer.answer_text|linebreaks }}
+                                {% else %}
+                                    <em class="text-muted">No answer provided.</em>
+                                {% endif %}
+                            </div>
+                        {% endif %}
+                    </div>
+
+                    <!-- Grading Section -->
+                    <div class="mt-3 row align-items-center bg-light p-2 rounded mx-0">
+                        <div class="col-md-2">
+                            <label class="form-label fw-bold">Marks Awarded:</label>
+                        </div>
+                        <div class="col-md-2">
+                            <input type="number" step="0.5" min="0" max="{{ item.question.marks }}" 
+                                   class="form-control grade-input" 
+                                   data-question-id="{{ item.question.id }}"
+                                   value="{{ item.answer.marks_awarded|default:0 }}">
+                        </div>
+                        <div class="col-md-4">
+                            <button class="btn btn-primary btn-sm save-grade-btn" data-question-id="{{ item.question.id }}">
+                                Save Grade
+                            </button>
+                            <span class="ms-2 text-success save-status" id="status-{{ item.question.id }}" style="display:none;">
+                                <i class="bi bi-check"></i> Saved
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const saveButtons = document.querySelectorAll('.save-grade-btn');
+    
+    saveButtons.forEach(btn => {
+        btn.addEventListener('click', function() {
+            const questionId = this.dataset.questionId;
+            const input = document.querySelector(`.grade-input[data-question-id="${questionId}"]`);
+            const marks = input.value;
+            const statusSpan = document.getElementById(`status-${questionId}`);
+            
+            // Disable button
+            btn.disabled = true;
+            btn.textContent = 'Saving...';
+            
+            fetch("{% url 'grade_attempt' attempt.id %}", {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'X-CSRFToken': '{{ csrf_token }}'
+                },
+                body: `question_id=${questionId}&marks=${marks}`
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    statusSpan.style.display = 'inline';
+                    document.getElementById('total-score').textContent = data.new_total;
+                    setTimeout(() => {
+                        statusSpan.style.display = 'none';
+                    }, 2000);
+                } else {
+                    alert('Error saving grade');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Error saving grade');
+            })
+            .finally(() => {
+                btn.disabled = false;
+                btn.textContent = 'Save Grade';
+            });
+        });
+    });
+});
+</script>
+{% endblock %}
+{% endblock %}
