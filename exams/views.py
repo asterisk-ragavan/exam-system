@@ -6,6 +6,8 @@ from django.contrib.auth.decorators import login_required, user_passes_test
 from django.contrib import messages
 from django.db import transaction, models
 from django.http import JsonResponse, HttpResponse
+from django.db import transaction
+from django.db.models import Sum
 import csv
 import io
 from .models import Exam, ExamStudent, Question, QuestionOption, StudentAnswer
@@ -49,6 +51,9 @@ def evaluate_attempt(request, attempt_id):
     # We need to join with StudentAnswer to get the answer if it exists
     questions = attempt.exam.questions.all()
     
+    # Calculate total possible marks (sum of all question marks)
+    total_marks = questions.aggregate(total=Sum('marks'))['total'] or 0
+    
     # Fetch answers
     answers = StudentAnswer.objects.filter(exam_student=attempt).select_related('question')
     answers_map = {ans.question_id: ans for ans in answers}
@@ -64,7 +69,8 @@ def evaluate_attempt(request, attempt_id):
         
     context = {
         'attempt': attempt,
-        'evaluation_data': evaluation_data
+        'evaluation_data': evaluation_data,
+        'total_marks': total_marks
     }
     return render(request, 'exams/evaluate_attempt.html', context)
 
@@ -331,9 +337,15 @@ def grade_attempt(request, attempt_id):
     if request.method == 'POST':
         attempt = get_object_or_404(ExamStudent, id=attempt_id)
         question_id = request.POST.get('question_id')
-        marks = float(request.POST.get('marks', 0))
+        try:
+            marks = float(request.POST.get('marks', 0))
+        except (ValueError, TypeError):
+            return JsonResponse({'status': 'error', 'message': 'Invalid marks value'}, status=400)
         
         question = get_object_or_404(Question, id=question_id)
+        
+        if marks < 0 or marks > question.marks:
+            return JsonResponse({'status': 'error', 'message': f'Marks must be between 0 and {question.marks}'}, status=400)
         
         # Update or create answer record (if teacher grades a question student didn't answer)
         answer, created = StudentAnswer.objects.get_or_create(

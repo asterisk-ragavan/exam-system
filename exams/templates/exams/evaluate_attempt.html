@@ -11,7 +11,7 @@
             <p class="mb-0">Exam: <strong>{{ attempt.exam.name }}</strong> | Status: <span class="badge {% if attempt.status == 'SUBMITTED' or attempt.status == 'AUTO_SUBMITTED' %}bg-success{% else %}bg-warning{% endif %}">{{ attempt.get_status_display }}</span></p>
         </div>
         <div class="text-end">
-            <h4>Total Score: <span id="total-score">{{ attempt.total_score }}</span> / {{ attempt.exam.questions.count }}</h4> <!-- Rough total, fix later -->
+            <h4>Total Score: <span id="total-score">{{ attempt.total_score }}</span> / {{ total_marks }}</h4>
             <a href="{% url 'exam_live_status' attempt.exam.id %}" class="btn btn-secondary">Back to List</a>
         </div>
     </div>
@@ -48,7 +48,7 @@
                             </ul>
                         {% else %}
                             <div class="p-3 bg-light border rounded mt-2">
-                                {% if item.answer.answer_text %}
+                                {% if item.answer and item.answer.answer_text %}
                                     {{ item.answer.answer_text|linebreaks }}
                                 {% else %}
                                     <em class="text-muted">No answer provided.</em>
@@ -66,7 +66,7 @@
                             <input type="number" step="0.5" min="0" max="{{ item.question.marks }}" 
                                    class="form-control grade-input" 
                                    data-question-id="{{ item.question.id }}"
-                                   value="{{ item.answer.marks_awarded|default:0 }}">
+                                   value="{% if item.answer %}{{ item.answer.marks_awarded|default:0 }}{% else %}0{% endif %}">
                         </div>
                         <div class="col-md-4">
                             <button class="btn btn-primary btn-sm save-grade-btn" data-question-id="{{ item.question.id }}">
