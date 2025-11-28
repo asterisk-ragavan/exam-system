@@ -4,7 +4,8 @@ from django.utils import timezone
 from django.shortcuts import get_object_or_404, render, redirect
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.contrib import messages
-from django.db import transaction
+from django.db import transaction, models
+from django.http import JsonResponse, HttpResponse
 import csv
 import io
 from .models import Exam, ExamStudent, Question, QuestionOption, StudentAnswer
@@ -323,9 +324,6 @@ class SubmitExamView(views.APIView):
         
         return Response({"status": "submitted", "score": attempt.total_score})
 
-
-from django.http import JsonResponse, HttpResponse
-from django.db import models
 
 @login_required
 @user_passes_test(is_teacher_or_admin)
